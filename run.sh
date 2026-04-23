@@ -1,0 +1,1 @@
+gcc -Wall report.c -o report && ./report
