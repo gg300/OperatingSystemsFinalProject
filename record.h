@@ -1,5 +1,5 @@
-#ifndef REPORT_H
-#define REPORT_H
+#ifndef RECORD_H
+#define RECORD_H
 
 #include <time.h>
 
@@ -7,7 +7,7 @@
 #define INSPECTOR_NAME_SIZE 50
 #define ISSUE_CATEGORY_SIZE 50
 
-typedef struct Report{
+typedef struct Record{
     int id;
     char inspectorName[INSPECTOR_NAME_SIZE];
     double gpsCoordinates[2]; // [latitude, longitude]
@@ -15,6 +15,6 @@ typedef struct Report{
     int severityLevel; //1-3
     time_t timestamp;
     char description[DESCRIPTION_SIZE];
-} Report;
+} Record;
 
 #endif 

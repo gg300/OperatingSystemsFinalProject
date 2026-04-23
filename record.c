@@ -1,6 +1,6 @@
 #include "includes.h"
 
 int main(){
-    Report report;
+    Record record;
     return 0;
 }
