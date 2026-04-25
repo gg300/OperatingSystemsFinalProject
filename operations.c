@@ -10,6 +10,11 @@ FlagOperation flag_ops[] = {
     {.flag="--update_threshold",.func=update_threshold},
     {.flag="--view",.func=view}
 };
+file_entry default_files[] = {
+    { DEFAULTREPORTNAME, REPORT_PERMISSIONS },
+    { DEFAULTCONFIGNAME, CONFIG_PERMISSIONS },
+    { DEFAULTLOGSNAME, LOGGED_DISTRICT_PERMISSIONS }
+};
 
 void list(const OpsArgument* arg){}
 void add(const OpsArgument* arg){}
@@ -29,13 +34,13 @@ int manage_permissions(const char* operation, const char* role){
 
 void set_permissions(const char* file_type,const char* path) {
     if(strcmp(file_type, "district_directory")==0){
-        chmod(path,DIRECTORY_PERMISSIONS);
+        chmod(path,DISTRICT_PERMISSIONS);
     }
     else if(strcmp(file_type, "reports.dat")==0){
         chmod(path,REPORT_PERMISSIONS);
     }
     else if(strcmp(file_type , "district.cfg") == 0){
-        chmod(path,DISTRICT_PERMISSIONS);
+        chmod(path,CONFIG_PERMISSIONS);
     }
     else if(strcmp(file_type , "logged_district") == 0){
         chmod(path,LOGGED_DISTRICT_PERMISSIONS);
@@ -63,24 +68,38 @@ DIR* setup_default_city_path(){
     }
     return dir;
 }
-DIR* setup_district(const char* district_id,DIR* default_directory){
-    
+DIR* setup_district(const char* district_id){
+    // creating the district folder
     char creation_path[DISTRICTNAMESIZE+DEFAULTNAMESIZE+1];
     snprintf(creation_path,sizeof(creation_path),"%s/%s",DEFAULTFOLDERNAME,district_id);
     struct stat st={0};
     if(stat(creation_path,&st)==-1){ /// check if the default folder already exists
-        if(mkdir(creation_path,DISTRICT_PERMISSIONS)!=0){
-            perror("Couldn't create the default cities folder");
+        if(mkdir(creation_path,DISTRICT_PERMISSIONS)!=0){   /////////// instead of 0755 should be DISTRICT_PERMISSIONS
+            perror("COULDN'T CREATE DISTRICT");
             return NULL;
         }
     }
     else if(!S_ISDIR(st.st_mode)){
-        perror("NAME EXISTS AND IT\'S NOT A DIRECTORY");
+        perror("DISTRICT NAME EXISTS AND IT\'S NOT A DIRECTORY");
         return NULL;
     }
+    // creating the district default files
+    char file_path[sizeof(creation_path) + DEFAULTFILESSIZE];
+    int file_count = sizeof(default_files)/sizeof(default_files[0]);
+    for(int i=0;i<file_count;i++){ 
+        snprintf(file_path,sizeof(file_path),"%s/%s",creation_path,default_files[i].name);
+        int fd = open(file_path, O_CREAT | O_WRONLY, default_files[i].permission);
+        if (fd == -1) {
+            perror("ERROR CREATING FILE");
+            return NULL;
+        }
+        close(fd);
+    }
+
+
     DIR *dir = opendir(creation_path);
     if(dir==NULL){
-        perror("ERROR WHILE OPENNING THE DEFAULT DIRECTORY");
+        perror("ERROR WHILE OPENNING DISTRICT DIRECTORY");
         return NULL;
     }
     return dir;

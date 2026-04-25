@@ -5,9 +5,9 @@
 
 /// Define permission levels for different file types
 
-#define DIRECTORY_PERMISSIONS 0750
+#define DISTRICT_PERMISSIONS 0750
 #define REPORT_PERMISSIONS 0664
-#define DISTRICT_PERMISSIONS 0640
+#define CONFIG_PERMISSIONS 0640
 #define LOGGED_DISTRICT_PERMISSIONS 0644
 
 #define DEFAULTREPORTNAME "reports.dat"
@@ -17,6 +17,12 @@
 
 #define DISTRICTNAMESIZE 200
 #define DEFAULTNAMESIZE (sizeof(DEFAULTFOLDERNAME)-1) //
+#define DEFAULTFILESSIZE 17
+
+typedef struct{ // created just for easier name -> permission matching
+    const char* name;
+    mode_t permission;
+}file_entry;
 
 typedef struct OpsArgument{
     int value,report_id;
@@ -47,6 +53,6 @@ void remove_report(const OpsArgument* arg); // manager only
 void update_threshold(const OpsArgument* arg); // manager only , call stat() , extract permissions from info.st_mode
 void filter(const OpsArgument* arg); // manager only 
 DIR* find_district(const char* district_id);
-int create_district(const char* district_id);
+DIR* setup_district(const char* district_id);
 
 #endif 
