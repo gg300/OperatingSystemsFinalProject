@@ -10,7 +10,16 @@
 #define DISTRICT_PERMISSIONS 640
 #define LOGGED_DISTRICT_PERMISSIONS 644
 
-extern const char* flags[];
+// typedef struct OpsArgument{
+
+// }OpsArgument; // i intent to simplify my function arguments to make it a little more abstract and easier to scale
+
+typedef void (*operation_function)(int district_id);
+
+typedef struct {
+    const char* flag;
+    operation_function func;
+}FlagOperation;
 
 void commandline_parser(char* argv[]); // will parse the command line and register the operations needed
 
@@ -22,7 +31,7 @@ void add(int district_id, const char* user); // user will be unused but I'll put
 void list(int district_id, const char* user);
 void view(int district_id,int report_id, const char* user);
 void remove_report(int district_id, int report_id, const char* user); // manager only 
-void update_threshold(int district_id, int value, const char* user); // manager only 
+void update_threshold(int district_id, int value, const char* user); // manager only , call stat() , extract permissions from info.st_mode
 void filter(int district_id, const char* condition, const char* user); // manager only 
 
 #endif

@@ -1,14 +1,14 @@
 #include "operations.h"
 
-const char* flags[]= {
-    "--role",
-    "--user",
-    "--list",
-    "--add",
-    "--remove_report",
-    "--filter",
-    "--update_threshold",
-    "--view"
+FlagOperation flag_ops = {
+    {"--role",NULL},
+    {"--user",NULL},
+    {"--list",list},
+    {"--add",add},
+    { "--remove_report",remove_report},
+    {"--filter",filter},
+    {"--update_threshold",update_threshold},
+    {"--view",view}
 };
 
 void commandline_parser(char* argv[]){
@@ -19,7 +19,7 @@ void manage_permissions(const char* operation, const char* role){
 
 }
 
-void set_permissions( const char* file_type,const char* path) {
+void set_permissions(const char* file_type,const char* path) {
     if(strcmp(file_type, "district_directory")==0){
         chmod(path,DIRECTORY_PERMISSIONS);
     }
