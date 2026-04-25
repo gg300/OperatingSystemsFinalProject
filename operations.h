@@ -5,33 +5,48 @@
 
 /// Define permission levels for different file types
 
-#define DIRECTORY_PERMISSIONS 750
-#define REPORT_PERMISSIONS 664
-#define DISTRICT_PERMISSIONS 640
-#define LOGGED_DISTRICT_PERMISSIONS 644
+#define DIRECTORY_PERMISSIONS 0750
+#define REPORT_PERMISSIONS 0664
+#define DISTRICT_PERMISSIONS 0640
+#define LOGGED_DISTRICT_PERMISSIONS 0644
 
-// typedef struct OpsArgument{
+#define DEFAULTREPORTNAME "reports.dat"
+#define DEFAULTCONFIGNAME "district.cfg"
+#define DEFAULTLOGSNAME "logged_district"
+#define DEFAULTFOLDERNAME "cities"
 
-// }OpsArgument; // i intent to simplify my function arguments to make it a little more abstract and easier to scale
+#define DISTRICTNAMESIZE 200
+#define DEFAULTNAMESIZE (sizeof(DEFAULTFOLDERNAME)-1) //
 
-typedef void (*operation_function)(int district_id);
+typedef struct OpsArgument{
+    int value,report_id;
+    const char* condition,user,role,district_id;
+}OpsArgument; // i intent to simplify my function arguments to make it a little more abstract and easier to scale
+
+typedef void (*operation_function)(const OpsArgument* arg);
 
 typedef struct {
     const char* flag;
     operation_function func;
 }FlagOperation;
 
-void commandline_parser(char* argv[]); // will parse the command line and register the operations needed
 
-void manage_permissions(const char* operation, const char* role); // will handle the permissions of the current operation
+DIR* setup_default_city_path();
+
+void commandline_parser(char* argv[]); // will parse the command line and register the operations needed using flagops and ops args
+
+int manage_permissions(const char* operation, const char* role); // will handle the permissions of the current operation
 
 void set_permissions(const char* file_type, const char* path);
 
-void add(int district_id, const char* user); // user will be unused but I'll put it in all operations as a convention
-void list(int district_id, const char* user);
-void view(int district_id,int report_id, const char* user);
-void remove_report(int district_id, int report_id, const char* user); // manager only 
-void update_threshold(int district_id, int value, const char* user); // manager only , call stat() , extract permissions from info.st_mode
-void filter(int district_id, const char* condition, const char* user); // manager only 
+/// operations
+void add(const OpsArgument* arg); 
+void list(const OpsArgument* arg);
+void view(const OpsArgument* arg);
+void remove_report(const OpsArgument* arg); // manager only 
+void update_threshold(const OpsArgument* arg); // manager only , call stat() , extract permissions from info.st_mode
+void filter(const OpsArgument* arg); // manager only 
+DIR* find_district(const char* district_id);
+int create_district(const char* district_id);
 
-#endif
+#endif 
