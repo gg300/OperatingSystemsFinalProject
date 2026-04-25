@@ -1,1 +1,1 @@
-gcc -Wall city_manager.c operations.c -o report && ./report test
+gcc -Wall city_manager.c operations.c -o city_manager && ./city_manager test
