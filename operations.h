@@ -50,7 +50,7 @@ DIR* setup_default_city_path();
 
 void commandline_parser(char* argv[],int argc); // will parse the command line and register the operations needed using flagops and ops args
 
-int manage_permissions(const char* operation, const char* role); // will handle the permissions of the current operation
+int manage_permissions(const char* operation, const char* role, mode_t mode); // will handle the permissions of the current operation
 
 void set_permissions(const char* file_type, const char* path);
 

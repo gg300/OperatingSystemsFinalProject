@@ -1,6 +1,8 @@
 #include "operations.h"
 #include "record.h"
 #include "includes.h"
+
+//global variables
 FlagOperation flag_ops[] = {
     {.flag="--role",.func=NULL},
     {.flag="--user",.func=NULL},
@@ -16,41 +18,26 @@ file_entry default_files[] = {
     { DEFAULTCONFIGNAME, CONFIG_PERMISSIONS },
     { DEFAULTLOGSNAME, LOGGED_DISTRICT_PERMISSIONS }
 };
-
-
 commandline_ops *commands = NULL;
 int flag_counter=0;
 
-void commandline_parser(char* argv[],int argc){ 
-    commands = calloc(argc, sizeof(*commands));
-    flag_counter=0;
-    int value_counter=0;
-    for(int i=1;i<argc;i++){
-        if(argv[i][0]=='-' && argv[i][1]=='-' && strlen(argv[i])>1){
-            strcpy(commands[flag_counter].flag,argv[i]);
-            printf("%s\n",commands[flag_counter].flag);    
-            value_counter=0;
-            flag_counter++;
-        }
-        else{
-            strcpy(commands[flag_counter-1].value[value_counter],argv[i]);
-            printf("%s\n",commands[flag_counter-1].value[value_counter]);
-            value_counter++;
-        }
-    }
-}
 
+//helpers
+static void mode_to_str(mode_t mode, char *buf) {
+    buf[0] = (mode & S_IRUSR) ? 'r' : '-';
+    buf[1] = (mode & S_IWUSR) ? 'w' : '-';
+    buf[2] = (mode & S_IXUSR) ? 'x' : '-';
+    buf[3] = (mode & S_IRGRP) ? 'r' : '-';
+    buf[4] = (mode & S_IWGRP) ? 'w' : '-';
+    buf[5] = (mode & S_IXGRP) ? 'x' : '-';
+    buf[6] = (mode & S_IROTH) ? 'r' : '-';
+    buf[7] = (mode & S_IWOTH) ? 'w' : '-';
+    buf[8] = (mode & S_IXOTH) ? 'x' : '-';
+    buf[9] = '\0';
+}
 OpsArgument* argument_constructor(commandline_ops command){
         OpsArgument* arg = calloc(1, sizeof(OpsArgument));
-        if(strcmp(command.flag,"--role")==0){
-            strcpy(arg->role,command.value[0]);
-            return arg;
-        }
-        else if(strcmp(command.flag,"--user")==0){
-           strcpy(arg->user, command.value[0]);
-            return arg;
-        }
-        else if(strcmp(command.flag,"--list")==0){
+        if(strcmp(command.flag,"--list")==0){
             strcpy(arg->district_id, command.value[0]);
             return arg;
         }
@@ -84,26 +71,16 @@ OpsArgument* argument_constructor(commandline_ops command){
         }
         return NULL;
 }
-
-void operations_handler(){
-    int number_of_commands=flag_counter;
-    for(int i=0;i<number_of_commands;i++){
-        OpsArgument *arg = argument_constructor(commands[i]);
-        if(arg!=NULL){
-            for(int j=0;j<DEFAULTFLAGNO;j++)
-            if(strcmp(commands[i].flag,flag_ops[j].flag)==0)
-                flag_ops[j].func(arg);
-            free(arg);
-        }
-    }
-        
+static int next_id(const char *path) {
+    int fd = open(path, O_RDONLY);
+    if (fd == -1) return 1;
+    int max = 0;
+    Record r;
+    while (read(fd, &r, sizeof r) == (ssize_t)sizeof r)
+        if (r.id > max) max = r.id;
+    close(fd);
+    return max + 1;
 }
-
-int manage_permissions(const char* operation, const char* role){
-
-    return -1; // operation not permitted
-}
-
 void set_permissions(const char* file_type,const char* path) {
     if(strcmp(file_type, "district_directory")==0){
         chmod(path,DISTRICT_PERMISSIONS);
@@ -176,22 +153,112 @@ DIR* setup_district(const char* district_id){
     }
     return dir;
 }
-
-
-void list(const OpsArgument* arg){
-    
+int manage_permissions(const char* operation, const char* role, mode_t mode){
+    int permitted = 0;
+    if (strcmp(role, "manager") == 0) {
+        if(strcmp(operation, "read")  == 0) 
+            permitted= (mode & S_IRUSR) != 0;
+        else if(strcmp(operation, "write") == 0)
+            permitted= (mode & S_IWUSR) != 0;
+    }
+    else{
+        if (strcmp(role, "inspector") == 0) {
+            if (strcmp(operation, "read") == 0)
+                permitted = (mode & S_IRGRP) != 0 || (mode & S_IROTH) != 0;
+            else if (strcmp(operation, "write") == 0)
+                permitted = (mode & S_IWGRP) != 0; // only 664 has this    
+        }
+        else{
+            perror("Unknown role");
+            return -1;
+        }
+    }
+    if(!permitted)
+        return -1; 
+    return 0;    
 }
-static int next_id(const char *path) {
-    int fd = open(path, O_RDONLY);
-    if (fd == -1) return 1;
-    int max = 0;
+
+
+//handlers
+void commandline_parser(char* argv[],int argc){ 
+    commands = calloc(argc, sizeof(*commands));
+    flag_counter=0;
+    int value_counter=0;
+    for(int i=1;i<argc;i++){
+        if(argv[i][0]=='-' && argv[i][1]=='-' && strlen(argv[i])>1){
+            strcpy(commands[flag_counter].flag,argv[i]);
+            printf("%s\n",commands[flag_counter].flag);    
+            value_counter=0;
+            flag_counter++;
+        }
+        else{
+            strcpy(commands[flag_counter-1].value[value_counter],argv[i]);
+            printf("%s\n",commands[flag_counter-1].value[value_counter]);
+            value_counter++;
+        }
+    }
+}
+void operations_handler(){
+    int number_of_commands=flag_counter;
+    char role[DEFAULTARGUMENTSIZE],user[DEFAULTARGUMENTSIZE];
+    for(int i=0;i<number_of_commands;i++){
+        OpsArgument *arg = argument_constructor(commands[i]);
+        if(strcmp(commands[i].flag,"--role")==0){
+            strcpy(role,commands[i].value[0]);
+        }
+        else if(strcmp(commands[i].flag,"--user")==0){
+           strcpy(user, commands[i].value[0]);
+        }
+        if(arg!=NULL){
+            strcpy(arg->role,role);
+            strcpy(arg->user,user);
+            for(int j=0;j<DEFAULTFLAGNO;j++)
+            if(strcmp(commands[i].flag,flag_ops[j].flag)==0 && flag_ops[j].func!=NULL)
+                flag_ops[j].func(arg);
+            free(arg);
+        }
+    }
+}
+
+//operations
+void list(const OpsArgument* arg) {
+    char reports_path[DISTRICTNAMESIZE+DEFAULTNAMESIZE+DEFAULTFILESSIZE+2];
+    snprintf(reports_path, sizeof reports_path,
+             "%s/%s/%s", DEFAULTFOLDERNAME, arg->district_id, DEFAULTREPORTNAME);
+ 
+    struct stat st;
+    if (stat(reports_path, &st) != 0) { perror("list: stat"); return; }
+ 
+    if (strcmp(arg->role, "inspector") == 0 && !(st.st_mode & S_IRGRP)) {
+        fprintf(stderr, "PERMISSION DENIED: inspector cannot read reports.dat\n");
+        return;
+    }
+ 
+    char perms[10], mtime[32];
+    mode_to_str(st.st_mode, perms);
+    strftime(mtime, sizeof mtime, "%Y-%m-%d %H:%M:%S", localtime(&st.st_mtime));
+    printf("reports.dat  %s  %lld bytes  %s\n", perms, (long long)st.st_size, mtime);
+ 
+    int fd = open(reports_path, O_RDONLY);
+    if (fd == -1) { perror("list: open"); return; }
+ 
     Record r;
-    while (read(fd, &r, sizeof r) == (ssize_t)sizeof r)
-        if (r.id > max) max = r.id;
+    int count = 0;
+    while (read(fd, &r, sizeof r) == (ssize_t)sizeof r) {
+        count++;
+        char ts[32];
+        strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", localtime(&r.timestamp));
+        printf("[%d] inspector=%-20s cat=%-12s sev=%d  %s  (%.4f,%.4f)  %s\n",
+               r.id, r.inspectorName, r.issueCategory,
+               r.severityLevel, ts,
+               r.gpsCoordinates[0], r.gpsCoordinates[1],
+               r.description);
+    }
     close(fd);
-    return max + 1;
+ 
+    if (count == 0) printf("No reports in district '%s'.\n", arg->district_id);
+    else            printf("Total: %d report(s).\n", count);
 }
-
 void add(const OpsArgument* arg) {
     DIR* district = setup_district(arg->district_id);
     if (!district) return;
@@ -247,7 +314,65 @@ void add(const OpsArgument* arg) {
         symlink(reports_path, link);
     }
 }
-void remove_report(const OpsArgument* arg){}
+void remove_report(const OpsArgument* arg) {
+    if (strcmp(arg->role, "manager") != 0) {
+        fprintf(stderr, "PERMISSION DENIED: only manager can remove reports\n");
+        return;
+    }
+
+    char reports_path[DISTRICTNAMESIZE + DEFAULTNAMESIZE + DEFAULTFILESSIZE + 2];
+    snprintf(reports_path, sizeof reports_path,
+             "%s/%s/%s", DEFAULTFOLDERNAME, arg->district_id, DEFAULTREPORTNAME);
+
+    struct stat st;
+    if (stat(reports_path, &st) == -1) { perror("remove_report: stat"); return; }
+    if (manage_permissions("write", arg->role, st.st_mode) != 0) return;
+
+    int fd = open(reports_path, O_RDWR);
+    if (fd == -1) { perror("remove_report: open"); return; }
+
+    Record r;
+    off_t target_offset = -1;
+    off_t current_offset = 0;
+
+    while (read(fd, &r, sizeof r) == (ssize_t)sizeof r) {
+    if (r.id == arg->report_id) {
+        target_offset = current_offset;
+        break;
+    }
+    current_offset += sizeof r;
+}
+
+    if (target_offset == -1) {
+        fprintf(stderr, "remove_report: report %d not found in district '%s'\n",
+                arg->report_id, arg->district_id);
+        close(fd);
+        return;
+    }
+
+    off_t read_offset  = target_offset + sizeof r;
+    off_t write_offset = target_offset;
+
+    while (1) {
+        lseek(fd, read_offset, SEEK_SET);
+        if (read(fd, &r, sizeof r) != (ssize_t)sizeof r) break;
+        lseek(fd, write_offset, SEEK_SET);
+        if (write(fd, &r, sizeof r) != (ssize_t)sizeof r) {
+            perror("remove_report: write");
+            close(fd);
+            return;
+        }
+        read_offset  += sizeof r;
+        write_offset += sizeof r;
+    }
+
+    if (ftruncate(fd, write_offset) == -1)
+        perror("remove_report: ftruncate");
+    else
+        printf("Report %d removed from district '%s'.\n", arg->report_id, arg->district_id);
+
+    close(fd);
+}
 void filter(const OpsArgument* arg){}
 void update_threshold(const OpsArgument* arg){}
 void view(const OpsArgument* arg){}
