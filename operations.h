@@ -15,9 +15,14 @@
 #define DEFAULTLOGSNAME "logged_district"
 #define DEFAULTFOLDERNAME "cities"
 
+#define DEFAULTFLAGNO 8
+#define DEFAULTFLAGSIZE 20
 #define DISTRICTNAMESIZE 200
 #define DEFAULTNAMESIZE (sizeof(DEFAULTFOLDERNAME)-1) //
 #define DEFAULTFILESSIZE 17
+
+#define DEFAULTARGUMENTSIZE 200
+#define DEFAULTVALUENO 10
 
 typedef struct{ // created just for easier name -> permission matching
     const char* name;
@@ -26,7 +31,7 @@ typedef struct{ // created just for easier name -> permission matching
 
 typedef struct OpsArgument{
     int value,report_id;
-    const char* condition,user,role,district_id;
+    const char* condition,*user,*role,*district_id;
 }OpsArgument; // i intent to simplify my function arguments to make it a little more abstract and easier to scale
 
 typedef void (*operation_function)(const OpsArgument* arg);
@@ -36,10 +41,14 @@ typedef struct {
     operation_function func;
 }FlagOperation;
 
+typedef struct commandline_ops{
+        char flag[DEFAULTFILESSIZE];
+        char value[DEFAULTVALUENO][DEFAULTARGUMENTSIZE];
+}commandline_ops;
 
 DIR* setup_default_city_path();
 
-void commandline_parser(char* argv[]); // will parse the command line and register the operations needed using flagops and ops args
+void commandline_parser(char* argv[],int argc); // will parse the command line and register the operations needed using flagops and ops args
 
 int manage_permissions(const char* operation, const char* role); // will handle the permissions of the current operation
 

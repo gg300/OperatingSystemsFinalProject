@@ -1,5 +1,6 @@
 #include "operations.h"
-
+#include "record.h"
+#include "includes.h"
 FlagOperation flag_ops[] = {
     {.flag="--role",.func=NULL},
     {.flag="--user",.func=NULL},
@@ -16,15 +17,35 @@ file_entry default_files[] = {
     { DEFAULTLOGSNAME, LOGGED_DISTRICT_PERMISSIONS }
 };
 
-void list(const OpsArgument* arg){}
-void add(const OpsArgument* arg){}
-void remove_report(const OpsArgument* arg){}
-void filter(const OpsArgument* arg){}
-void update_threshold(const OpsArgument* arg){}
-void view(const OpsArgument* arg){}
 
-void commandline_parser(char* argv[]){
-    printf("%s", argv[1]);
+commandline_ops *commands = NULL;
+
+
+void commandline_parser(char* argv[],int argc){ 
+    
+    commands = malloc(argc * sizeof(commandline_ops));
+    if (!commands) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
+
+    memset(commands,0,argc*sizeof(commands));
+    int flag_counter=0;
+    int value_counter=0;
+    for(int i=1;i<argc;i++){
+        if(argv[i][0]=='-' && argv[i][1]=='-' && strlen(argv[i])>1){
+            strcpy(commands[flag_counter].flag,argv[i]);
+            printf("%s\n",commands[flag_counter].flag);    
+            value_counter=0;
+            flag_counter++;
+        }
+        else{
+            strcpy(commands[flag_counter-1].value[value_counter],argv[i]);
+            printf("%s\n",commands[flag_counter-1].value[value_counter]);
+            value_counter++;
+        }
+    }
+    // OpsArgument args = {.condition="",.district_id="",.report_id="",.role="",.user="",.value=0,.report_id=0};
 }
 
 int manage_permissions(const char* operation, const char* role){
@@ -94,7 +115,7 @@ DIR* setup_district(const char* district_id){
             return NULL;
         }
         close(fd);
-    }
+    } 
 
 
     DIR *dir = opendir(creation_path);
@@ -104,3 +125,78 @@ DIR* setup_district(const char* district_id){
     }
     return dir;
 }
+
+
+void list(const OpsArgument* arg){
+    
+}
+static int next_id(const char *path) {
+    int fd = open(path, O_RDONLY);
+    if (fd == -1) return 1;
+    int max = 0;
+    Record r;
+    while (read(fd, &r, sizeof r) == (ssize_t)sizeof r)
+        if (r.id > max) max = r.id;
+    close(fd);
+    return max + 1;
+}
+
+void add(const OpsArgument* arg) {
+    DIR* district = setup_district(arg->district_id);
+    if (!district) return;
+    closedir(district);
+ 
+    char reports_path[DISTRICTNAMESIZE+DEFAULTNAMESIZE+DEFAULTFILESSIZE+2];
+    snprintf(reports_path, sizeof reports_path,
+             "%s/%s/%s", DEFAULTFOLDERNAME, arg->district_id, DEFAULTREPORTNAME);
+ 
+    struct stat st;
+    if (stat(reports_path, &st) == 0) {
+        if (strcmp(arg->role, "manager")   == 0 && !(st.st_mode & S_IWUSR)) {
+            fprintf(stderr, "PERMISSION DENIED: manager cannot write reports.dat\n");
+            return;
+        }
+        if (strcmp(arg->role, "inspector") == 0 && !(st.st_mode & S_IWGRP)) {
+            fprintf(stderr, "PERMISSION DENIED: inspector cannot write reports.dat\n");
+            return;
+        }
+    }
+ 
+    int fd = open(reports_path, O_WRONLY|O_APPEND|O_CREAT, REPORT_PERMISSIONS);
+    if (fd == -1) { perror("add: open"); return; }
+    chmod(reports_path, REPORT_PERMISSIONS);
+ 
+    Record r;
+    memset(&r, 0, sizeof r);
+    r.id        = next_id(reports_path);
+    r.timestamp = time(NULL);
+    strncpy(r.inspectorName, arg->user, INSPECTOR_NAME_SIZE - 1);
+ 
+    printf("X:  "); scanf("%lf", &r.gpsCoordinates[0]);
+    printf("Y:  "); scanf("%lf", &r.gpsCoordinates[1]);
+    printf("Category (road,lightning,flooding,other):  "); scanf("%49s", r.issueCategory);
+    printf("Severity (1-3):  "); scanf("%d",  &r.severityLevel);
+    getchar();
+    printf("Description:  "); fgets(r.description, DESCRIPTION_SIZE, stdin);
+    r.description[strcspn(r.description, "\n")] = '\0';
+ 
+    if (write(fd, &r, sizeof r) != (ssize_t)sizeof r)
+        perror("add: write");
+    else
+        printf("Report %d added to district '%s'.\n", r.id, arg->district_id);
+    close(fd);
+ 
+    char link[DISTRICTNAMESIZE+32];
+    snprintf(link, sizeof link, "active_reports-%s", arg->district_id);
+    struct stat lst;
+    if (lstat(link, &lst) == 0) {
+        if (S_ISLNK(lst.st_mode) && stat(link, &st) != 0)
+            fprintf(stderr, "WARNING: dangling symlink %s\n", link);
+    } else {
+        symlink(reports_path, link);
+    }
+}
+void remove_report(const OpsArgument* arg){}
+void filter(const OpsArgument* arg){}
+void update_threshold(const OpsArgument* arg){}
+void view(const OpsArgument* arg){}

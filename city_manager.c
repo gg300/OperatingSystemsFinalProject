@@ -2,9 +2,10 @@
 #include "operations.h"
 
 int main(int argc, char *argv[]) {
+    if(argc < 2){
+        perror("NO VALID OPERATIONS TO BE DONE");
+    }
     DIR* default_dir = setup_default_city_path();
-    setup_district("test_district");
-    setup_district("teest2district");
-    commandline_parser(argv);
+    commandline_parser(argv,argc);
     return 0;
 }
