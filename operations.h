@@ -31,7 +31,7 @@ typedef struct{ // created just for easier name -> permission matching
 
 typedef struct OpsArgument{
     int value,report_id;
-    const char* condition,*user,*role,*district_id;
+    char condition[DEFAULTARGUMENTSIZE],user[DEFAULTARGUMENTSIZE],role[DEFAULTARGUMENTSIZE],district_id[DEFAULTARGUMENTSIZE];
 }OpsArgument; // i intent to simplify my function arguments to make it a little more abstract and easier to scale
 
 typedef void (*operation_function)(const OpsArgument* arg);
@@ -63,5 +63,7 @@ void update_threshold(const OpsArgument* arg); // manager only , call stat() , e
 void filter(const OpsArgument* arg); // manager only 
 DIR* find_district(const char* district_id);
 DIR* setup_district(const char* district_id);
+
+void operations_handler();
 
 #endif 

@@ -19,18 +19,11 @@ file_entry default_files[] = {
 
 
 commandline_ops *commands = NULL;
-
+int flag_counter=0;
 
 void commandline_parser(char* argv[],int argc){ 
-    
-    commands = malloc(argc * sizeof(commandline_ops));
-    if (!commands) {
-        perror("malloc failed");
-        exit(EXIT_FAILURE);
-    }
-
-    memset(commands,0,argc*sizeof(commands));
-    int flag_counter=0;
+    commands = calloc(argc, sizeof(*commands));
+    flag_counter=0;
     int value_counter=0;
     for(int i=1;i<argc;i++){
         if(argv[i][0]=='-' && argv[i][1]=='-' && strlen(argv[i])>1){
@@ -45,7 +38,65 @@ void commandline_parser(char* argv[],int argc){
             value_counter++;
         }
     }
-    // OpsArgument args = {.condition="",.district_id="",.report_id="",.role="",.user="",.value=0,.report_id=0};
+}
+
+OpsArgument* argument_constructor(commandline_ops command){
+        OpsArgument* arg = calloc(1, sizeof(OpsArgument));
+        if(strcmp(command.flag,"--role")==0){
+            strcpy(arg->role,command.value[0]);
+            return arg;
+        }
+        else if(strcmp(command.flag,"--user")==0){
+           strcpy(arg->user, command.value[0]);
+            return arg;
+        }
+        else if(strcmp(command.flag,"--list")==0){
+            strcpy(arg->district_id, command.value[0]);
+            return arg;
+        }
+        else if(strcmp(command.flag,"--add")==0){
+            strcpy(arg->district_id, command.value[0]);
+            return arg;
+        }
+        else if(strcmp(command.flag,"--remove_report")==0){
+            strcpy(arg->district_id, command.value[0]);
+            if (command.value[1][0]!='\0') {
+                arg->report_id = atoi(command.value[1]);
+            }
+            return arg;
+        }
+        // else if(strcmp(command.flag,"--filter")==0){
+        //     return arg;
+        // }
+        else if(strcmp(command.flag,"--update_threshold")==0){
+            strcpy(arg->district_id, command.value[0]);
+            if (command.value[1][0]!='\0') {
+                arg->value = atoi(command.value[1]);
+            }
+            return arg;
+        }
+        else if(strcmp(command.flag,"--view")==0){
+            strcpy(arg->district_id, command.value[0]);
+            if (command.value[1][0]!='\0') {
+                arg->report_id = atoi(command.value[1]);
+            }
+            return arg;
+        }
+        return NULL;
+}
+
+void operations_handler(){
+    int number_of_commands=flag_counter;
+    for(int i=0;i<number_of_commands;i++){
+        OpsArgument *arg = argument_constructor(commands[i]);
+        if(arg!=NULL){
+            for(int j=0;j<DEFAULTFLAGNO;j++)
+            if(strcmp(commands[i].flag,flag_ops[j].flag)==0)
+                flag_ops[j].func(arg);
+            free(arg);
+        }
+    }
+        
 }
 
 int manage_permissions(const char* operation, const char* role){

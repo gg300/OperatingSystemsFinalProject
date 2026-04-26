@@ -6,6 +6,10 @@ int main(int argc, char *argv[]) {
         perror("NO VALID OPERATIONS TO BE DONE");
     }
     DIR* default_dir = setup_default_city_path();
+
     commandline_parser(argv,argc);
+
+    operations_handler();
+    
     return 0;
 }
