@@ -374,5 +374,77 @@ void remove_report(const OpsArgument* arg) {
     close(fd);
 }
 void filter(const OpsArgument* arg){}
-void update_threshold(const OpsArgument* arg){}
-void view(const OpsArgument* arg){}
+void update_threshold(const OpsArgument* arg) {
+    // Manager only
+    if (strcmp(arg->role, "manager") != 0) {
+        fprintf(stderr, "PERMISSION DENIED: only manager can update threshold\n");
+        return;
+    }
+
+    char cfg_path[DISTRICTNAMESIZE + DEFAULTNAMESIZE + DEFAULTFILESSIZE + 2];
+    snprintf(cfg_path, sizeof cfg_path,
+             "%s/%s/%s", DEFAULTFOLDERNAME, arg->district_id, DEFAULTCONFIGNAME);
+
+    // Spec: call stat(), verify bits are exactly 640 before writing
+    struct stat st;
+    if (stat(cfg_path, &st) == -1) { perror("update_threshold: stat"); return; }
+
+    if ((st.st_mode & 0777) != CONFIG_PERMISSIONS) {
+        fprintf(stderr, "update_threshold: district.cfg permissions have been altered "
+                "(expected 640, got %03o) — refusing to write\n",
+                st.st_mode & 0777);
+        return;
+    }
+
+    if (manage_permissions("write", arg->role, st.st_mode) != 0) return;
+
+    int fd = open(cfg_path, O_WRONLY | O_TRUNC);
+    if (fd == -1) { perror("update_threshold: open"); return; }
+
+    char buf[32];
+    int len = snprintf(buf, sizeof buf, "threshold=%d\n", arg->value);
+    if (write(fd, buf, len) != len)
+        perror("update_threshold: write");
+    else
+        printf("Threshold updated to %d in district '%s'.\n", arg->value, arg->district_id);
+
+    close(fd);
+}
+void view(const OpsArgument* arg) {
+    char reports_path[DISTRICTNAMESIZE + DEFAULTNAMESIZE + DEFAULTFILESSIZE + 2];
+    snprintf(reports_path, sizeof reports_path,
+             "%s/%s/%s", DEFAULTFOLDERNAME, arg->district_id, DEFAULTREPORTNAME);
+
+    struct stat st;
+    if (stat(reports_path, &st) == -1) { perror("view: stat"); return; }
+    if (manage_permissions("read", arg->role, st.st_mode) != 0) return;
+
+    int fd = open(reports_path, O_RDONLY);
+    if (fd == -1) { perror("view: open"); return; }
+
+    Record r;
+    int found = 0;
+    while (read(fd, &r, sizeof r) == (ssize_t)sizeof r) {
+        if (r.id == arg->report_id) {
+            found = 1;
+            break;
+        }
+    }
+    close(fd);
+
+    if (!found) {
+        fprintf(stderr, "view: report %d not found in district '%s'\n",
+                arg->report_id, arg->district_id);
+        return;
+    }
+
+    char ts[32];
+    strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", localtime(&r.timestamp));
+    printf("ID: %d\n", r.id);
+    printf("Inspector: %s\n", r.inspectorName);
+    printf("Timestamp: %s\n", ts);
+    printf("GPS: (%.6f, %.6f)\n", r.gpsCoordinates[0], r.gpsCoordinates[1]);
+    printf("Category: %s\n", r.issueCategory);
+    printf("Severity: %d\n", r.severityLevel);
+    printf("Description: %s\n", r.description);
+}
