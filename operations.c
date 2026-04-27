@@ -177,7 +177,60 @@ int manage_permissions(const char* operation, const char* role, mode_t mode){
         return -1; 
     return 0;    
 }
+int parse_condition(const char *input, char *field, char *op, char *value) {
+    const char *first_colon = strchr(input, ':');
+    if (!first_colon) return 0;
 
+    const char *second_colon = strchr(first_colon + 1, ':');
+    if (!second_colon) return 0;
+
+    /* field: everything before the first colon */
+    size_t field_len = first_colon - input;
+    strncpy(field, input, field_len);
+    field[field_len] = '\0';
+
+    /* op: everything between the two colons */
+    size_t op_len = second_colon - (first_colon + 1);
+    strncpy(op, first_colon + 1, op_len);
+    op[op_len] = '\0';
+
+    /* value: everything after the second colon */
+    strcpy(value, second_colon + 1);
+
+    return (field[0] != '\0' && op[0] != '\0' && value[0] != '\0');
+}
+int match_condition(Record *r, const char *field, const char *op, const char *value) {
+    /* --- numeric comparison helper (inline via a macro-like pattern) --- */
+#define NUMCMP(actual, opstr, rhs)                  \
+    (strcmp(opstr,"==") == 0 ? (actual) == (rhs) :  \
+     strcmp(opstr,"!=") == 0 ? (actual) != (rhs) :  \
+     strcmp(opstr,"<")  == 0 ? (actual) <  (rhs) :  \
+     strcmp(opstr,"<=") == 0 ? (actual) <= (rhs) :  \
+     strcmp(opstr,">")  == 0 ? (actual) >  (rhs) :  \
+     strcmp(opstr,">=") == 0 ? (actual) >= (rhs) : 0)
+
+    if (strcmp(field, "severity") == 0) {
+        int rhs = atoi(value);
+        return NUMCMP(r->severityLevel, op, rhs);
+    }
+    else if (strcmp(field, "timestamp") == 0) {
+        long rhs = atol(value);
+        return NUMCMP((long)r->timestamp, op, rhs);
+    }
+    else if (strcmp(field, "category") == 0) {
+        int cmp = strcmp(r->issueCategory, value);
+        return NUMCMP(cmp, op, 0);
+    }
+    else if (strcmp(field, "inspector") == 0) {
+        int cmp = strcmp(r->inspectorName, value);
+        return NUMCMP(cmp, op, 0);
+    }
+
+#undef NUMCMP
+
+    fprintf(stderr, "match_condition: unknown field '%s'\n", field);
+    return 0;
+}
 
 //handlers
 void commandline_parser(char* argv[],int argc){ 
@@ -373,7 +426,6 @@ void remove_report(const OpsArgument* arg) {
 
     close(fd);
 }
-void filter(const OpsArgument* arg){}
 void update_threshold(const OpsArgument* arg) {
     // Manager only
     if (strcmp(arg->role, "manager") != 0) {
@@ -447,4 +499,77 @@ void view(const OpsArgument* arg) {
     printf("Category: %s\n", r.issueCategory);
     printf("Severity: %d\n", r.severityLevel);
     printf("Description: %s\n", r.description);
+}
+void filter(const OpsArgument* arg) {
+    char reports_path[DISTRICTNAMESIZE + DEFAULTNAMESIZE + DEFAULTFILESSIZE + 2];
+    snprintf(reports_path, sizeof reports_path,
+             "%s/%s/%s", DEFAULTFOLDERNAME, arg->district_id, DEFAULTREPORTNAME);
+
+    struct stat st;
+    if (stat(reports_path, &st) == -1) { perror("filter: stat"); return; }
+    if (manage_permissions("read", arg->role, st.st_mode) != 0) return;
+
+    /* condition is stored in arg->condition, multiple conditions are
+       space-separated — we split on spaces into an array               */
+    char cond_buf[DEFAULTARGUMENTSIZE];
+    strncpy(cond_buf, arg->condition, DEFAULTARGUMENTSIZE - 1);
+    cond_buf[DEFAULTARGUMENTSIZE - 1] = '\0';
+
+    /* collect up to DEFAULTVALUENO condition tokens */
+    char *tokens[DEFAULTVALUENO];
+    int   token_count = 0;
+    char *tok = strtok(cond_buf, " ");
+    while (tok && token_count < DEFAULTVALUENO) {
+        tokens[token_count++] = tok;
+        tok = strtok(NULL, " ");
+    }
+
+    if (token_count == 0) {
+        fprintf(stderr, "filter: no conditions provided\n");
+        return;
+    }
+
+    /* parse all conditions up front so we catch bad syntax early */
+    char fields[DEFAULTVALUENO][64];
+    char ops   [DEFAULTVALUENO][4];
+    char values[DEFAULTVALUENO][DEFAULTARGUMENTSIZE];
+
+    for (int i = 0; i < token_count; i++) {
+        if (!parse_condition(tokens[i], fields[i], ops[i], values[i])) {
+            fprintf(stderr, "filter: malformed condition '%s' "
+                    "(expected field:op:value)\n", tokens[i]);
+            return;
+        }
+    }
+
+    int fd = open(reports_path, O_RDONLY);
+    if (fd == -1) { perror("filter: open"); return; }
+
+    Record r;
+    int matched = 0;
+    while (read(fd, &r, sizeof r) == (ssize_t)sizeof r) {
+        /* record must satisfy ALL conditions (implicit AND) */
+        int pass = 1;
+        for (int i = 0; i < token_count && pass; i++)
+            if (!match_condition(&r, fields[i], ops[i], values[i]))
+                pass = 0;
+
+        if (pass) {
+            matched++;
+            char ts[32];
+            strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", localtime(&r.timestamp));
+            printf("[%d] inspector=%-20s cat=%-12s sev=%d  %s  (%.4f,%.4f)  %s\n",
+                   r.id, r.inspectorName, r.issueCategory,
+                   r.severityLevel, ts,
+                   r.gpsCoordinates[0], r.gpsCoordinates[1],
+                   r.description);
+        }
+    }
+    close(fd);
+
+    if (matched == 0)
+        printf("No reports matched the given condition(s) in district '%s'.\n",
+               arg->district_id);
+    else
+        printf("Total matched: %d report(s).\n", matched);
 }
