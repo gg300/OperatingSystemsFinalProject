@@ -42,7 +42,7 @@ typedef struct {
 }FlagOperation;
 
 typedef struct commandline_ops{
-        char flag[DEFAULTFILESSIZE];
+        char flag[DEFAULTFLAGSIZE];
         char value[DEFAULTVALUENO][DEFAULTARGUMENTSIZE];
 }commandline_ops;
 

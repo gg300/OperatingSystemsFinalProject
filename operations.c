@@ -36,7 +36,7 @@ static void mode_to_str(mode_t mode, char *buf) {
     buf[8] = (mode & S_IXOTH) ? 'x' : '-';
     buf[9] = '\0';
 }
-OpsArgument* argument_constructor(commandline_ops command){
+OpsArgument* argument_constructor(commandline_ops command){ // to implement filter
         OpsArgument* arg = calloc(1, sizeof(OpsArgument));
         if(strcmp(command.flag,"--list")==0){
             strcpy(arg->district_id, command.value[0]);
@@ -63,6 +63,10 @@ OpsArgument* argument_constructor(commandline_ops command){
             }
             return arg;
         }
+        else if (strcmp(command.flag, "--remove_district") == 0) {
+            strcpy(arg->district_id, command.value[0]);
+            return arg;
+        }
         else if(strcmp(command.flag,"--view")==0){
             strcpy(arg->district_id, command.value[0]);
             if (command.value[1][0]!='\0') {
@@ -70,6 +74,7 @@ OpsArgument* argument_constructor(commandline_ops command){
             }
             return arg;
         }
+        
         return NULL;
 }
 static int next_id(const char *path) {
@@ -256,6 +261,7 @@ void operations_handler(){
     int number_of_commands=flag_counter;
     char role[DEFAULTARGUMENTSIZE],user[DEFAULTARGUMENTSIZE];
     for(int i=0;i<number_of_commands;i++){
+        // printf("DEBUG: %s\n",commands[i].flag);
         OpsArgument *arg = argument_constructor(commands[i]);
         if(strcmp(commands[i].flag,"--role")==0){
             strcpy(role,commands[i].value[0]);
@@ -266,9 +272,10 @@ void operations_handler(){
         if(arg!=NULL){
             strcpy(arg->role,role);
             strcpy(arg->user,user);
-            for(int j=0;j<DEFAULTFLAGNO;j++)
-            if(strcmp(commands[i].flag,flag_ops[j].flag)==0 && flag_ops[j].func!=NULL)
-                flag_ops[j].func(arg);
+            for(int j=0;j<DEFAULTFLAGNO;j++){
+                if(strcmp(commands[i].flag,flag_ops[j].flag)==0 && flag_ops[j].func!=NULL)
+                    flag_ops[j].func(arg);
+            }
             free(arg);
         }
     }
@@ -509,14 +516,10 @@ void filter(const OpsArgument* arg) {
     struct stat st;
     if (stat(reports_path, &st) == -1) { perror("filter: stat"); return; }
     if (manage_permissions("read", arg->role, st.st_mode) != 0) return;
-
-    /* condition is stored in arg->condition, multiple conditions are
-       space-separated — we split on spaces into an array               */
     char cond_buf[DEFAULTARGUMENTSIZE];
     strncpy(cond_buf, arg->condition, DEFAULTARGUMENTSIZE - 1);
     cond_buf[DEFAULTARGUMENTSIZE - 1] = '\0';
 
-    /* collect up to DEFAULTVALUENO condition tokens */
     char *tokens[DEFAULTVALUENO];
     int   token_count = 0;
     char *tok = strtok(cond_buf, " ");
@@ -529,12 +532,9 @@ void filter(const OpsArgument* arg) {
         fprintf(stderr, "filter: no conditions provided\n");
         return;
     }
-
-    /* parse all conditions up front so we catch bad syntax early */
     char fields[DEFAULTVALUENO][64];
     char ops   [DEFAULTVALUENO][4];
     char values[DEFAULTVALUENO][DEFAULTARGUMENTSIZE];
-
     for (int i = 0; i < token_count; i++) {
         if (!parse_condition(tokens[i], fields[i], ops[i], values[i])) {
             fprintf(stderr, "filter: malformed condition '%s' "
@@ -542,19 +542,15 @@ void filter(const OpsArgument* arg) {
             return;
         }
     }
-
     int fd = open(reports_path, O_RDONLY);
     if (fd == -1) { perror("filter: open"); return; }
-
     Record r;
     int matched = 0;
     while (read(fd, &r, sizeof r) == (ssize_t)sizeof r) {
-        
         int pass = 1;
         for (int i = 0; i < token_count && pass; i++)
             if (!match_condition(&r, fields[i], ops[i], values[i]))
                 pass = 0;
-
         if (pass) {
             matched++;
             char ts[32];
@@ -567,13 +563,73 @@ void filter(const OpsArgument* arg) {
         }
     }
     close(fd);
-
     if (matched == 0)
         printf("No reports matched the given condition(s) in district '%s'.\n",
                arg->district_id);
     else
         printf("Total matched: %d report(s).\n", matched);
 }
-void remove_district(const OpsArgument* arg){
+void remove_district(const OpsArgument* arg) {
+    if (strcmp(arg->role, "manager") != 0) {
+        fprintf(stderr, "PERMISSION DENIED: only manager can remove a district\n");
+        return;
+    }
+    char district_path[DISTRICTNAMESIZE + DEFAULTNAMESIZE + 2];
+    snprintf(district_path, sizeof district_path,
+             "%s/%s", DEFAULTFOLDERNAME, arg->district_id);
+    struct stat st;
+    if (stat(district_path, &st) == -1) {
+        fprintf(stderr, "remove_district: district '%s' not found\n",
+                arg->district_id);
+        return;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "remove_district: '%s' exists but is not a directory\n",
+                district_path);
+        return;
+    }
+    pid_t pid = fork();
+    if (pid == -1) {
+        perror("remove_district: fork");
+        return;
+    }
+    if (pid == 0) {
+        /*  Child process  */
+        char *args[] = { "rm", "-rf", district_path, NULL };
+        execv("/bin/rm", args);
+        perror("remove_district: execv");
+        _exit(1); 
+    }
 
+    /*  Parent process: wait for the child to finish */
+    int status;
+    if (waitpid(pid, &status, 0) == -1) {
+        perror("remove_district: waitpid");
+        return;
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        fprintf(stderr,
+                "remove_district: 'rm -rf %s' failed (exit code %d)\n",
+                district_path, WEXITSTATUS(status));
+        return;
+    }
+    printf("District '%s' deleted.\n", arg->district_id);
+
+    /*   Remove the active_reports symlink  */
+    char link_name[DISTRICTNAMESIZE + 32];
+    snprintf(link_name, sizeof link_name,
+             "active_reports-%s", arg->district_id);
+
+    struct stat lst;
+    if (lstat(link_name, &lst) == 0) {          /* symlink (or anything) exists */
+        if (unlink(link_name) == -1)
+            perror("remove_district: unlink symlink");
+        else
+            printf("Symlink '%s' removed.\n", link_name);
+    } else {
+        fprintf(stderr,
+                "remove_district: symlink '%s' not found — skipping\n",
+                link_name);
+    }
 }
