@@ -15,7 +15,7 @@
 #define DEFAULTLOGSNAME "logged_district"
 #define DEFAULTFOLDERNAME "cities"
 
-#define DEFAULTFLAGNO 8
+#define DEFAULTFLAGNO 9
 #define DEFAULTFLAGSIZE 20
 #define DISTRICTNAMESIZE 200
 #define DEFAULTNAMESIZE (sizeof(DEFAULTFOLDERNAME)-1) //
@@ -61,6 +61,7 @@ void view(const OpsArgument* arg);
 void remove_report(const OpsArgument* arg); // manager only 
 void update_threshold(const OpsArgument* arg); // manager only , call stat() , extract permissions from info.st_mode
 void filter(const OpsArgument* arg); // manager only 
+void remove_district(const OpsArgument* arg);
 DIR* find_district(const char* district_id);
 DIR* setup_district(const char* district_id);
 

@@ -11,7 +11,8 @@ FlagOperation flag_ops[] = {
     {.flag="--remove_report",.func=remove_report},
     {.flag="--filter",.func=filter},
     {.flag="--update_threshold",.func=update_threshold},
-    {.flag="--view",.func=view}
+    {.flag="--view",.func=view},
+    {.flag="--remove_district",.func=remove_district}
 };
 file_entry default_files[] = {
     { DEFAULTREPORTNAME, REPORT_PERMISSIONS },
@@ -548,7 +549,7 @@ void filter(const OpsArgument* arg) {
     Record r;
     int matched = 0;
     while (read(fd, &r, sizeof r) == (ssize_t)sizeof r) {
-        /* record must satisfy ALL conditions (implicit AND) */
+        
         int pass = 1;
         for (int i = 0; i < token_count && pass; i++)
             if (!match_condition(&r, fields[i], ops[i], values[i]))
@@ -572,4 +573,7 @@ void filter(const OpsArgument* arg) {
                arg->district_id);
     else
         printf("Total matched: %d report(s).\n", matched);
+}
+void remove_district(const OpsArgument* arg){
+
 }
