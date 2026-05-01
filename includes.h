@@ -1,5 +1,7 @@
 #ifndef INCLUDES_H
 #define INCLUDES_H
+#define _POSIX_C_SOURCE 200809L  /// for struct sigaction to be exposed 
+ 
 
 #include <time.h>
 #include <stdio.h>
@@ -11,6 +13,8 @@
 #include <fcntl.h> 
 #include <dirent.h>
 #include <string.h>
+#include <signal.h>
+#include <errno.h>
 
 #endif // INCLUDES_H
 
