@@ -24,6 +24,9 @@
 #define DEFAULTARGUMENTSIZE 200
 #define DEFAULTVALUENO 10
 
+#define MONITOR_PID_FILE ".monitor_pid"
+
+
 typedef struct{ // created just for easier name -> permission matching
     const char* name;
     mode_t permission;
