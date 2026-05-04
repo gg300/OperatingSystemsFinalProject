@@ -53,9 +53,6 @@ OpsArgument* argument_constructor(commandline_ops command){ // to implement filt
             }
             return arg;
         }
-        // else if(strcmp(command.flag,"--filter")==0){
-        //     return arg;
-        // }
         else if(strcmp(command.flag,"--update_threshold")==0){
             strcpy(arg->district_id, command.value[0]);
             if (command.value[1][0]!='\0') {
@@ -74,7 +71,15 @@ OpsArgument* argument_constructor(commandline_ops command){ // to implement filt
             }
             return arg;
         }
-        
+        else if(strcmp(command.flag,"--filter")==0){
+            strcpy(arg->district_id, command.value[0]);
+            arg->condition[0] = '\0';
+            for(int i = 1; i < DEFAULTVALUENO && command.value[i][0] != '\0'; i++){
+                if(i > 1) strncat(arg->condition, " ", DEFAULTARGUMENTSIZE - strlen(arg->condition) - 1);
+                strncat(arg->condition, command.value[i], DEFAULTARGUMENTSIZE - strlen(arg->condition) - 1);
+            }
+            return arg;
+        }
         return NULL;
 }
 static int next_id(const char *path) {
@@ -185,28 +190,23 @@ int manage_permissions(const char* operation, const char* role, mode_t mode){
 }
 int parse_condition(const char *input, char *field, char *op, char *value) {
     const char *first_colon = strchr(input, ':');
-    if (!first_colon) return 0;
-
+    if (!first_colon) 
+        return 0;
     const char *second_colon = strchr(first_colon + 1, ':');
-    if (!second_colon) return 0;
-
-    /* field: everything before the first colon */
+    if (!second_colon) 
+        return 0;
     size_t field_len = first_colon - input;
     strncpy(field, input, field_len);
     field[field_len] = '\0';
-
-    /* op: everything between the two colons */
     size_t op_len = second_colon - (first_colon + 1);
     strncpy(op, first_colon + 1, op_len);
     op[op_len] = '\0';
-
-    /* value: everything after the second colon */
     strcpy(value, second_colon + 1);
 
     return (field[0] != '\0' && op[0] != '\0' && value[0] != '\0');
 }
 int match_condition(Record *r, const char *field, const char *op, const char *value) {
-    /* --- numeric comparison helper (inline via a macro-like pattern) --- */
+    /// numeric comparison helper (using w macro-like pattern)
 #define NUMCMP(actual, opstr, rhs)                  \
     (strcmp(opstr,"==") == 0 ? (actual) == (rhs) :  \
      strcmp(opstr,"!=") == 0 ? (actual) != (rhs) :  \
@@ -237,6 +237,53 @@ int match_condition(Record *r, const char *field, const char *op, const char *va
     fprintf(stderr, "match_condition: unknown field '%s'\n", field);
     return 0;
 }
+static void notify_monitor(const char *district_id, int report_id) {
+    char log_path[DISTRICTNAMESIZE + DEFAULTNAMESIZE + DEFAULTFILESSIZE + 2];
+    snprintf(log_path, sizeof log_path, "%s/%s/%s", DEFAULTFOLDERNAME, district_id, DEFAULTLOGSNAME);
+
+    int log_fd = open(log_path, O_WRONLY | O_APPEND | O_CREAT, LOGGED_DISTRICT_PERMISSIONS);
+    if (log_fd == -1) {
+        perror("notify_monitor: open log");
+        return;
+    }
+    /// Read the monitor PID from .monitor_pid
+    int pid_fd = open(MONITOR_PID_FILE, O_RDONLY);
+    if (pid_fd == -1) {
+        const char *msg = "[monitor] WARN: .monitor_pid not found — monitor could not be informed of the new report\n";
+        write(log_fd, msg, strlen(msg));
+        close(log_fd);
+        return;
+    }
+    char pid_buf[32];
+    memset(pid_buf, 0, sizeof pid_buf);
+    ssize_t n = read(pid_fd, pid_buf, sizeof pid_buf - 1);
+    close(pid_fd);
+    if (n <= 0) {
+        const char *msg = "[monitor] WARN: .monitor_pid is empty — monitor could not be informed of the new report\n";
+        write(log_fd, msg, strlen(msg));
+        close(log_fd);
+        return;
+    }
+    pid_t monitor_pid = (pid_t)atoi(pid_buf);
+    if (monitor_pid <= 0) {
+        const char *msg = "[monitor] WARN: invalid PID in .monitor_pid — monitor could not be informed of the new report\n";
+        write(log_fd, msg, strlen(msg));
+        close(log_fd);
+        return;
+    }
+    if (kill(monitor_pid, SIGUSR1) == -1) {
+        char msg[256];
+        int len = snprintf(msg, sizeof msg, "[monitor] WARN: kill(SIGUSR1) failed for PID %d (errno %d) — monitor could not be informed of report %d\n", (int)monitor_pid, errno, report_id);
+        write(log_fd, msg, len);
+    } 
+    else {
+        char msg[256];
+        int len = snprintf(msg, sizeof msg, "[monitor] INFO: SIGUSR1 sent to monitor (PID %d) — report %d added to district '%s'\n",(int)monitor_pid, report_id, district_id);
+        write(log_fd, msg, len);
+        printf("[monitor] Notified monitor (PID %d) of new report %d.\n",(int)monitor_pid, report_id);
+    }
+    close(log_fd);
+}
 
 //handlers
 void commandline_parser(char* argv[],int argc){ 
@@ -246,13 +293,13 @@ void commandline_parser(char* argv[],int argc){
     for(int i=1;i<argc;i++){
         if(argv[i][0]=='-' && argv[i][1]=='-' && strlen(argv[i])>1){
             strcpy(commands[flag_counter].flag,argv[i]);
-            printf("%s\n",commands[flag_counter].flag);    
+            // printf("%s\n",commands[flag_counter].flag);     for Debugging purposes
             value_counter=0;
             flag_counter++;
         }
         else{
             strcpy(commands[flag_counter-1].value[value_counter],argv[i]);
-            printf("%s\n",commands[flag_counter-1].value[value_counter]);
+            // printf("%s\n",commands[flag_counter-1].value[value_counter]);     for Debugging purposes
             value_counter++;
         }
     }
@@ -374,6 +421,7 @@ void add(const OpsArgument* arg) {
     } else {
         symlink(reports_path, link);
     }
+    notify_monitor(arg->district_id, r.id);
 }
 void remove_report(const OpsArgument* arg) {
     if (strcmp(arg->role, "manager") != 0) {
@@ -556,10 +604,8 @@ void filter(const OpsArgument* arg) {
             char ts[32];
             strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", localtime(&r.timestamp));
             printf("[%d] inspector=%-20s cat=%-12s sev=%d  %s  (%.4f,%.4f)  %s\n",
-                   r.id, r.inspectorName, r.issueCategory,
-                   r.severityLevel, ts,
-                   r.gpsCoordinates[0], r.gpsCoordinates[1],
-                   r.description);
+                   r.id, r.inspectorName, r.issueCategory,r.severityLevel, 
+                   ts,r.gpsCoordinates[0], r.gpsCoordinates[1], r.description);
         }
     }
     close(fd);
@@ -601,7 +647,7 @@ void remove_district(const OpsArgument* arg) {
         _exit(1); 
     }
 
-    /*  Parent process: wait for the child to finish */
+    //  Parent process: wait for the child to finish
     int status;
     if (waitpid(pid, &status, 0) == -1) {
         perror("remove_district: waitpid");
@@ -616,7 +662,7 @@ void remove_district(const OpsArgument* arg) {
     }
     printf("District '%s' deleted.\n", arg->district_id);
 
-    /*   Remove the active_reports symlink  */
+    ///  Remove the active_reports symlink
     char link_name[DISTRICTNAMESIZE + 32];
     snprintf(link_name, sizeof link_name,
              "active_reports-%s", arg->district_id);
