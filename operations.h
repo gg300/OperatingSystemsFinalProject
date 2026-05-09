@@ -49,12 +49,10 @@ typedef struct commandline_ops{
         char value[DEFAULTVALUENO][DEFAULTARGUMENTSIZE];
 }commandline_ops;
 
+//helpers
 DIR* setup_default_city_path();
-
 void commandline_parser(char* argv[],int argc); // will parse the command line and register the operations needed using flagops and ops args
-
 int manage_permissions(const char* operation, const char* role, mode_t mode); // will handle the permissions of the current operation
-
 void set_permissions(const char* file_type, const char* path);
 
 /// operations
@@ -68,6 +66,7 @@ void remove_district(const OpsArgument* arg);
 DIR* find_district(const char* district_id);
 DIR* setup_district(const char* district_id);
 
+//handlers
 void operations_handler();
 
 #endif 

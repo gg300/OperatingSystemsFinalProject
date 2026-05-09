@@ -20,7 +20,7 @@ file_entry default_files[] = {
     { DEFAULTLOGSNAME, LOGGED_DISTRICT_PERMISSIONS }
 };
 commandline_ops *commands = NULL;
-int flag_counter=0;
+short unsigned flag_counter=0;
 
 
 //helpers
@@ -36,7 +36,7 @@ static void mode_to_str(mode_t mode, char *buf) {
     buf[8] = (mode & S_IXOTH) ? 'x' : '-';
     buf[9] = '\0';
 }
-OpsArgument* argument_constructor(commandline_ops command){ // to implement filter
+static OpsArgument* argument_constructor(commandline_ops command){ // to implement filter
         OpsArgument* arg = calloc(1, sizeof(OpsArgument));
         if(strcmp(command.flag,"--list")==0){
             strcpy(arg->district_id, command.value[0]);
