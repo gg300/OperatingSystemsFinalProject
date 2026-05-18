@@ -59,12 +59,38 @@ int setup_signal_handlers(void) {
     return 0;
 }
 
+static pid_t check_existing_monitor(void) {
+    int fd = open(MONITOR_PID_FILE, O_RDONLY);
+    if (fd == -1)
+        return 0;  
+    char buf[32] = {0};
+    ssize_t n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0)
+        return 0;
+    pid_t existing = (pid_t)atoi(buf);
+    if (existing <= 0)
+        return 0;
+    if (kill(existing, 0) == 0)
+        return existing; 
+ 
+    return 0; 
+}
+
 int main() {
+    pid_t existing = check_existing_monitor();
+    if (existing > 0) {
+        /* Write through stdout (which hub_mon has redirected to its pipe) */
+        printf("MONITOR_ERROR: already running PID %d\n", (int)existing);
+        fflush(stdout);
+        return 1;
+    }
     pid_t my_pid = getpid();
     if (write_pid_file(my_pid) == -1)
         return 1;     
     printf("[monitor_reports] started (PID %d). Waiting for signals \n",(int)my_pid);
     fflush(stdout);
+    
     if (setup_signal_handlers() == -1) {
         delete_pid_file();
         return 1;
